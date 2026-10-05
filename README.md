@@ -1,124 +1,329 @@
-# AWS - Route53 - Resolver Endpoint - Terraform Module
-Terraform module to create Route53 Resolver Endpoints (AutomateTheCloud model)
+# Terraform module for Amazon Route 53 Resolver endpoints
 
-***
+Creates an Amazon Route 53 Resolver endpoint in a VPC, and a security group that controls which DNS servers it exchanges queries with. An inbound endpoint lets DNS servers on your network, or in another VPC, resolve names from the VPC, such as records in private hosted zones. An outbound endpoint lets the VPC forward queries to DNS servers elsewhere, through forwarding rules.
+
+An endpoint created with only the required inputs uses plain DNS over IPv4, and cannot send or receive any query until you allow a network.
+
+## What it configures
+
+| Setting | Default | Input |
+|---|---|---|
+| Direction | Required: `INBOUND` or `OUTBOUND` | `direction` |
+| IP addresses | Required: at least 2, each in a subnet you choose; AWS picks the address unless you set one | `ip_addresses` |
+| Network access | None: no query in or out | `security_group_rules` |
+| Protocols | `Do53` (plain DNS on port 53) | `protocols` |
+| Address type | IPv4 | |
 
 ## Usage
+
 ```hcl
-module "route53_resolver_endpoint" {
-  source    = "../"
-  providers = { aws.this = aws.example }
+module "resolver_inbound" {
+  source  = "AutomateTheCloud/route53_resolver_endpoint/aws"
+  version = "~> 1.0"
 
   details = {
-    scope               = "Demo"
-    purpose             = "Resolver Endpoint"
-    environment         = "dev"
-    additional_tags = {
-      "Project"         = "Project Name"
-      "ProjectID"       = "123456789"
-      "Contact"         = "David Singer - david.singer@example.com"
-    }
+    scope       = "Automate the Cloud"
+    purpose     = "Hybrid DNS"
+    environment = "Production"
   }
 
-  direction     = "OUTBOUND"
-  allowed_cidrs = [ "0.0.0.0/0" ]
+  direction = "INBOUND"
+  vpc_id    = "vpc-0123456789abcdef0"
+  ip_addresses = {
+    a = { subnet_id = "subnet-0123456789abcdef0", ip = "10.0.1.53" }
+    b = { subnet_id = "subnet-0fedcba9876543210", ip = "10.0.2.53" }
+  }
 
-  # ip_address_assignment = {
-    # subnet-0123456789012345a = "10.75.224.201"
-    # subnet-0123456789012345b = "10.75.225.201"
-    # subnet-0123456789012345c = "10.75.226.201"
-  # }
-
-  # subnets = [
-    # "subnet-0123456789012345a",
-    # "subnet-0123456789012345b",
-    # "subnet-0123456789012345c"
-  # ]
-  subnet_network_tag = "private"
-  vpc_id             = "vpc-00000000000000001"
+  security_group_rules = {
+    data_center = { cidr_ipv4 = "192.168.0.0/16", description = "Data center DNS servers" }
+  }
 }
 ```
 
-***
+`details`, `direction`, `vpc_id` and `ip_addresses` are the only required inputs. `details` sets the `Scope`, `Purpose` and `Environment` tags on every resource.
 
-## Inputs
-| Name | Description | Type | Default |
-|------|-------------|:----:|:-------:|
-| `allowed_cidrs` | Allowed CIDRs | `list` | `[]` |
-| `direction` | The direction of DNS queries to or from the Route 53 Resolver endpoint (INBOUND or OUTBOUND) | `string` | `OUTBOUND` |
-| `ip_address_assignment` | IP Address assignment per Subnet (example: { subnet-09df4d2511ead488b = "192.168.0.11" } | `map` | `{}` |
-| `subnets` | Subnet IDs (not needed if specifying Network Tag) | `list` | `[]` |
-| `subnet_network_tag` | Subnet Network Tag (not needed if specifying Subnet IDs) | `string` | |
-| `vpc_id` | VPC ID | `string` | |
+The DNS servers on your network then forward queries for the VPC's domains to `10.0.1.53` and `10.0.2.53`. The addresses are also in `module.resolver_inbound.metadata.route53_resolver_endpoint.ip_address`.
 
-## Inputs (Details)
-| Name | Description | Type | Default |
-|------|-------------|:----:|:-------:|
-| `details.scope` | (Required) Scope Name - What does this object belong to? (Organization Name, Project, etc) | `string` | |
-| `details.scope_abbr` | (Optional) Scope [Abbreviation](#Abbreviations) Override | `string` | |
-| `details.purpose` | (Required) Purpose Name - What is the purpose or function of this object, or what does this object server? | `string` | |
-| `details.purpose_abbr` | (Optional) Purpose [Abbreviation](#Abbreviations) Override | `string` | |
-| `details.environment` | (Required) Environment Name | `string` | |
-| `details.environment_abbr` | (Optional) Environment [Abbreviation](#Abbreviations) Override | `string` | |
-| `details.additional_tags` | (Optional) [Additional Tags](#Additional-Tags) for resources | `map` | `[]` |
+The module uses your default `aws` provider and creates everything in that provider's Region. To create the endpoint somewhere else without configuring another provider, set `region`:
 
-***
+```hcl
+module "resolver_us_west_2" {
+  source  = "AutomateTheCloud/route53_resolver_endpoint/aws"
+  version = "~> 1.0"
 
-## Outputs
-All outputs from this module are mapped to a single output named `metadata` to make it easier to capture all of the relevant metadata that would be useful when referenced by other stacks (requires only a single output reference in your code, instead of dozens!)
-
-| Name | Description |
-|:-----|:------------|
-| `details.scope.name` | Scope name |
-| `details.scope.abbr` | Scope abbreviation |
-| `details.scope.machine` | Scope machine-friendly abbreviation |
-| `details.purpose.name` | Purpose name |
-| `details.purpose.abbr` | Purpose abbreviation |
-| `details.purpose.machine` | Purpose machine-friendly abbreviation |
-| `details.environment.name` | Environment name |
-| `details.environment.abbr` | Environment abbreviation |
-| `details.environment.machine` | Environment machine-friendly abbreviation |
-| `details.tags` | Map of tags applied to all resources |
-| `aws.account.id` | AWS Account ID |
-| `aws.region.name` | AWS Region name, example: `us-east-1` |
-| `aws.region.abbr` | AWS Region four letter abbreviation, example: `use1` |
-| `aws.region.description` | AWS Region description, example: `US East (N. Virginia)` |
-| `route53_resolver_endpoint.id` | Route53 - Resolver Endpoint: ID |
-| `route53_resolver_endpoint.arn` | Route53 - Resolver Endpoint: ARN |
-| `route53_resolver_endpoint.name` | Route53 - Resolver Endpoint: Name |
-| `route53_resolver_endpoint.direction` | Route53 - Resolver Endpoint: Direction |
-| `route53_resolver_endpoint.host_vpc_id` | Route53 - Resolver Endpoint: Host VPC ID |
-| `route53_resolver_endpoint.ip_address` | Route53 - Resolver Endpoint: List of Resolver IP Addresses with Subnet IDs |
-| `route53_resolver_endpoint.security_group_ids` | Route53 - Resolver Endpoint: Security Group IDs |
-| `security_group.id` | Security Group: ID |
-| `security_group.arn` | Security Group: ARN |
-| `security_group.name` | Security Group: Name |
-
-***
-
-## Notes
-
-### Abbreviations
-* When generating resource names, the module converts each identifier to a more 'machine-friendly' abbreviated format, removing all special characters, replacing spaces with underscores (_), and converting to lowercase. Example: 'Demo - Module' => 'demo_module'
-* Not all resource names allow underscores. When those are encountered, the detail identifier will have the underscore removed (test_example => testexample) automatically. This machine-friendly abbreviation is referred to as 'machine' within the module.
-* The abbreviations can be overridden by suppling the abbreviated names (ie: scope_abbr). This is useful when you have a long name and need the created resource names to be shorter. Some resources in AWS have shorter name constraints than others, or you may just prefer it shorter. NOTE: If specifying the Abbreviation, be sure to follow the convention of no spaces and no special characters (except for underscore), otherwise resoure creation may fail.
-
-### Additional Tags
-* You can specify additional tags for resources by adding to the `details.additional_tags` map.
-```
-additional_tags = {
-  "Example"         = "Extra Tag"
-  "Project"         = "Project Name"
-  "CostCenter"      = "123456"
+  region    = "us-west-2"
+  details   = { scope = "Automate the Cloud", purpose = "Hybrid DNS", environment = "Production" }
+  direction = "OUTBOUND"
+  vpc_id    = "vpc-0abcdef0123456789"
+  ip_addresses = {
+    a = { subnet_id = "subnet-0abcdef0123456789" }
+    b = { subnet_id = "subnet-09876543210fedcba" }
+  }
 }
 ```
 
-***
+The VPC and subnets must be in that Region too.
 
-## Terraform Versions
-Terraform ~> 1.11.0 is supported.
+To use a provider configured for another account, pass it explicitly with `providers = { aws = aws.other_account }`.
 
-## Provider Versions
-| Name | Version |
-|------|---------|
-| aws | `~> 5.93` |
+## The `details` input
+
+Most modules ask only for what the resource itself needs. This one also requires `details`: three names that say what the endpoint belongs to, what it is for, and which environment it is in. Every Automate the Cloud module takes the same input, and requiring it is deliberate.
+
+```hcl
+details = {
+  scope       = "Automate the Cloud" # what it belongs to: an organization, team or project
+  purpose     = "Hybrid DNS"         # what it is for
+  environment = "Production"         # which environment
+}
+```
+
+**Every resource can be traced.** The three names become the `Scope`, `Purpose` and `Environment` tags on every resource the module creates. Months later, anyone looking at an endpoint in the AWS console, or at a line on the bill, can see who it belongs to and why it exists. With cost allocation tags turned on in AWS Billing, the same tags split your bill by project and environment. Because the input is required and checked, no resource can be created without them.
+
+**One definition for a whole stack.** Write `details` once and pass the same value to every module, so the endpoint, its forwarding rules, its VPC and everything else are tagged alike. Tags you want everywhere, such as a cost center or the Terraform workspace, go in `additional_tags`:
+
+```hcl
+locals {
+  details = {
+    scope           = "Automate the Cloud"
+    purpose         = "Hybrid DNS"
+    environment     = "Production"
+    additional_tags = { CostCenter = "1234", IaC = "true" }
+  }
+}
+
+module "resolver_outbound" {
+  source  = "AutomateTheCloud/route53_resolver_endpoint/aws"
+  version = "~> 1.0"
+
+  details   = local.details
+  direction = "OUTBOUND"
+  vpc_id    = "vpc-0123456789abcdef0"
+  ip_addresses = {
+    a = { subnet_id = "subnet-0123456789abcdef0" }
+    b = { subnet_id = "subnet-0fedcba9876543210" }
+  }
+}
+```
+
+**Consistent names.** The module turns each name into two short forms other resources can be named with: `abbr`, lowercase with words joined by underscores (`Hybrid DNS` becomes `hybrid_dns`), and `machine`, lowercase letters and numbers only (`hybriddns`), for resources that allow no underscores. It also works out a short form of the Region, such as `use1` for `us-east-1`. Every module derives these the same way, so names stay consistent across a stack. To choose your own short forms, set `scope_abbr`, `purpose_abbr` or `environment_abbr`, for example `environment_abbr = "prd"`.
+
+**One output to reach everything.** All of it comes back in the `metadata` output, along with everything the module created, so a configuration needs only one reference: `module.resolver_outbound.metadata.route53_resolver_endpoint.id` for a forwarding rule's `resolver_endpoint_id`, or `module.resolver_outbound.metadata.aws.region.abbr` for the Region's short form.
+
+## Examples
+
+Each example is a complete configuration you can run with `terraform init` and `terraform apply`, given a VPC and two subnets.
+
+- [Basic inbound endpoint](https://github.com/AutomateTheCloud/terraform-aws-route53_resolver_endpoint/tree/main/examples/basic): an endpoint that DNS servers on your network can forward queries to.
+- [Complete](https://github.com/AutomateTheCloud/terraform-aws-route53_resolver_endpoint/tree/main/examples/complete): an outbound endpoint with fixed addresses, DNS over HTTPS, and a forwarding rule that sends one domain's queries to DNS servers on your network.
+
+## Things to know
+
+### Cost
+
+AWS bills an endpoint for each of its IP addresses, every hour it exists, whether it handles queries or not, plus a charge per query. See [Route 53 pricing](https://aws.amazon.com/route53/pricing/). Two addresses, the minimum, are enough for most endpoints.
+
+AWS also limits how many endpoints an account can have in each Region (4 by default) and how many addresses each endpoint can have (6 by default). When an account is at its endpoint limit, the AWS provider keeps retrying the create, and fails if no endpoint is deleted before it times out. See [Route 53 Resolver quotas](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/DNSLimitations.html#limits-api-entities-resolver) to check or raise them.
+
+### Network access
+
+The module's security group allows only what `security_group_rules` lists, on the ports `protocols` needs: UDP and TCP port 53 for `Do53`, and TCP port 443 for `DoH` and `DoH-FIPS`. An `INBOUND` endpoint gets ingress rules, from the sources that send it queries. An `OUTBOUND` endpoint gets egress rules, to the DNS servers it forwards to. Replies need no rule: security groups let them through.
+
+To add a rule the module does not make, attach it to the group yourself with `aws_vpc_security_group_ingress_rule` or `aws_vpc_security_group_egress_rule` and `security_group_id = module.<name>.metadata.security_group.id`.
+
+### Outbound endpoints need forwarding rules
+
+An outbound endpoint forwards nothing on its own. A forwarding rule (`aws_route53_resolver_rule` with `rule_type = "FORWARD"`) names a domain, the DNS servers to send its queries to, and the endpoint to send them through, and a rule association applies it to a VPC. The [complete example](https://github.com/AutomateTheCloud/terraform-aws-route53_resolver_endpoint/tree/main/examples/complete) shows both. The [route53_resolver_rule module](https://github.com/AutomateTheCloud/terraform-aws-route53_resolver_rule) creates them too.
+
+### IP addresses
+
+Put the addresses in subnets in at least two Availability Zones, so the endpoint keeps answering when one zone is down. For an `INBOUND` endpoint, set each `ip`: the DNS servers on your network are configured with these addresses, and an address AWS picks changes whenever the endpoint is replaced. Adding, removing or changing an entry in `ip_addresses` changes the endpoint in place; the other addresses keep working.
+
+### Settings that replace the endpoint
+
+Changing `direction` or `vpc_id` replaces the endpoint. A replaced endpoint has a new ID and, unless you set them, new addresses. Forwarding rules that use the endpoint are replaced with it, together with their VPC associations, so the domains they forward are resolved normally until the new associations are in place, which takes a few minutes. Changing `details` renames the endpoint and retags everything in place. The security group keeps the name and description it was created with, because changing either would replace the group, and with it the endpoint.
+
+### What the module does not cover
+
+The endpoint uses IPv4 only: IPv6 and dual-stack endpoints are not supported. The `INBOUND_DELEGATION` direction is not supported either.
+
+## Contributing
+
+Contributions are welcome, after review. Read [CONTRIBUTING.md](https://github.com/AutomateTheCloud/terraform-aws-route53_resolver_endpoint/blob/main/CONTRIBUTING.md) before opening a pull request, and report security problems as described in [SECURITY.md](https://github.com/AutomateTheCloud/terraform-aws-route53_resolver_endpoint/blob/main/SECURITY.md).
+
+## Testing
+
+The tests in `tests/` run offline against mocked AWS providers, so they need no AWS account:
+
+```shell
+terraform init
+terraform test
+```
+
+## Reference
+
+The sections below are generated from the code by [terraform-docs](https://terraform-docs.io). To update them, run `terraform-docs .`.
+
+<!-- BEGIN_TF_DOCS -->
+### Requirements
+
+The following requirements are needed by this module:
+
+- <a name="requirement_terraform"></a> [terraform](#requirement_terraform) (>= 1.9)
+
+- <a name="requirement_aws"></a> [aws](#requirement_aws) (>= 6.0)
+
+### Required Inputs
+
+The following input variables are required:
+
+#### <a name="input_details"></a> [details](#input_details)
+
+Description: Names and tags shared by every resource in the module. `scope`, `purpose` and `environment` become the `Scope`, `Purpose` and `Environment` tags, and are converted to abbreviations that other modules can use in resource names (see the `metadata` output). [The `details` input](https://github.com/AutomateTheCloud/terraform-aws-route53_resolver_endpoint#the-details-input) explains why it is required.
+
+- `scope` - (Required) What the resource belongs to, such as an organization or project: `Automate the Cloud`.
+- `purpose` - (Required) What the resource is for: `Web Site`.
+- `environment` - (Required) The environment: `Production`.
+- `scope_abbr`, `purpose_abbr`, `environment_abbr` - (Optional) Abbreviations to use instead of the generated ones, which are lowercase with words joined by underscores (`Web Site` becomes `web_site`).
+- `additional_tags` - (Optional) More tags for every resource, such as `{ CostCenter = "1234" }`.
+
+Type:
+
+```hcl
+object({
+    scope            = string
+    scope_abbr       = optional(string)
+    purpose          = string
+    purpose_abbr     = optional(string)
+    environment      = string
+    environment_abbr = optional(string)
+    additional_tags  = optional(map(string), {})
+  })
+```
+
+#### <a name="input_direction"></a> [direction](#input_direction)
+
+Description: Which way DNS queries go through the endpoint:
+
+- `INBOUND` - Your network, or another VPC, sends queries to the endpoint, and Route 53 Resolver answers them from this VPC's view of DNS (private hosted zones, VPC names).
+- `OUTBOUND` - Route 53 Resolver forwards queries from this VPC to DNS servers elsewhere, such as on your network. Forwarding rules (`aws_route53_resolver_rule`) decide which domains are forwarded; the endpoint only provides the network path.
+
+Changing the direction replaces the endpoint.
+
+Type: `string`
+
+#### <a name="input_ip_addresses"></a> [ip_addresses](#input_ip_addresses)
+
+Description: The network interfaces of the endpoint: one entry per IP address, each in a subnet of `vpc_id`. AWS requires at least 2. The AWS provider accepts at most 10, and an account quota allows 6 by default. Put them in subnets in different Availability Zones, so the endpoint keeps working when one zone fails. The keys are names you choose, such as the Availability Zone (`a`, `b`); they only identify each address, so a subnet created in the same configuration can be used.
+
+Each entry takes:
+
+- `subnet_id` - (Required) The subnet to create the address in.
+- `ip` - (Optional) The IPv4 address to use, from the subnet's range. Without it, AWS picks one. Set it for an `INBOUND` endpoint, so that the DNS servers on your network that forward to it keep the same targets.
+
+Adding or removing an entry changes the endpoint in place.
+
+Type:
+
+```hcl
+map(object({
+    subnet_id = string
+    ip        = optional(string)
+  }))
+```
+
+#### <a name="input_vpc_id"></a> [vpc_id](#input_vpc_id)
+
+Description: The ID of the VPC the endpoint is in, such as `vpc-0123456789abcdef0`. The module creates the endpoint's security group in it. Every subnet in `ip_addresses` must belong to it.
+
+Type: `string`
+
+### Optional Inputs
+
+The following input variables are optional (have default values):
+
+#### <a name="input_protocols"></a> [protocols](#input_protocols)
+
+Description: The protocols the endpoint uses for DNS queries:
+
+- `Do53` - Plain DNS on port 53, over UDP and TCP.
+- `DoH` - DNS over HTTPS, on TCP port 443.
+- `DoH-FIPS` - DNS over HTTPS with FIPS-validated cryptography, on TCP port 443. `INBOUND` endpoints only.
+
+The module opens only the ports these protocols need in `security_group_rules`. Changing the protocols changes the endpoint in place. Defaults to `["Do53"]`.
+
+Type: `set(string)`
+
+Default:
+
+```json
+[
+  "Do53"
+]
+```
+
+#### <a name="input_region"></a> [region](#input_region)
+
+Description: The AWS Region to create the endpoint and its security group in, such as `us-west-2`. Defaults to the Region of the AWS provider passed to the module. The VPC and subnets must be in that Region.
+
+Type: `string`
+
+Default: `null`
+
+#### <a name="input_security_group_rules"></a> [security_group_rules](#input_security_group_rules)
+
+Description: Who the endpoint exchanges DNS traffic with. The module creates a security group for the endpoint with one rule per entry here, for each port that `protocols` needs (UDP and TCP 53 for `Do53`, TCP 443 for `DoH` and `DoH-FIPS`), and nothing else:
+
+- For an `INBOUND` endpoint, ingress rules: the sources allowed to send queries to the endpoint, such as the DNS servers on your network.
+- For an `OUTBOUND` endpoint, egress rules: the DNS servers the endpoint may forward queries to.
+
+With the default, `{}`, the endpoint can neither receive nor send queries. Replies need no rule of their own: security groups let them through. The keys are names you choose; they only identify each rule, so a security group created in the same configuration can be used.
+
+Each entry takes exactly one of:
+
+- `cidr_ipv4` - An IPv4 range, such as `10.0.0.0/16`.
+- `security_group_id` - A security group whose members are allowed, such as the group of DNS servers in a peered VPC.
+- `prefix_list_id` - A managed prefix list of ranges.
+
+and optionally:
+
+- `description` - (Optional) What the source or destination is. Defaults to the key.
+
+Type:
+
+```hcl
+map(object({
+    cidr_ipv4         = optional(string)
+    security_group_id = optional(string)
+    prefix_list_id    = optional(string)
+    description       = optional(string)
+  }))
+```
+
+Default: `{}`
+
+### Outputs
+
+The following outputs are exported:
+
+#### <a name="output_metadata"></a> [metadata](#output_metadata)
+
+Description: Everything the module created, in one object, so that other configurations need only one reference:
+
+- `details` - The scope, purpose and environment, each with its `name`, `abbr` (lowercase, words joined by underscores) and `machine` (lowercase letters and numbers only) forms, and the `tags` applied to every resource.
+- `aws` - The `account.id`, and the `region` `name`, `abbr` (such as `use1` for `us-east-1`) and `description`.
+- `route53_resolver_endpoint` - The endpoint, with its `id` (use it as `resolver_endpoint_id` in forwarding rules), `arn`, `name`, `direction`, `host_vpc_id`, `protocols`, `resolver_endpoint_type`, `security_group_ids`, `region`, `tags`, `tags_all`, and `ip_address`: one entry per address, with its `subnet_id`, `ip` and `ip_id`. The `ip` values are the addresses to forward queries to for an `INBOUND` endpoint.
+- `security_group` - The endpoint's security group, with its `id`, `arn`, `name`, `name_prefix`, `description`, `vpc_id`, `owner_id`, `revoke_rules_on_delete`, `region`, `tags` and `tags_all`. Its rules are in the two entries below.
+- `vpc_security_group_ingress_rule` - The ingress rules of an `INBOUND` endpoint, keyed `<entry>-<protocol>-<port>` (such as `on_premises-udp-53`), or `null` when there are none.
+- `vpc_security_group_egress_rule` - The egress rules of an `OUTBOUND` endpoint, keyed the same way, or `null` when there are none.
+<!-- END_TF_DOCS -->
+
+## License
+
+This module is licensed under the [Apache License 2.0](https://github.com/AutomateTheCloud/terraform-aws-route53_resolver_endpoint/blob/main/LICENSE). See [NOTICE](https://github.com/AutomateTheCloud/terraform-aws-route53_resolver_endpoint/blob/main/NOTICE) for the copyright notice.
+
+The Automate the Cloud name and logo are not covered by this license.
+
+---
+
+Maintained by [Automate the Cloud](https://automatethe.cloud), a Kentucky 501(c)(3) that teaches cloud infrastructure and helps nonprofits run theirs.
